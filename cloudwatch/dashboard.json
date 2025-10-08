@@ -1,0 +1,107 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 2,
+      "properties": {
+        "markdown": "# 📊 Kafka on EKS — Observability Dashboard\nCluster: `kafka-eks` | Region: `us-east-1`"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 2,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "KafkaOnEKS", "kafka_server_BrokerTopicMetrics_MessagesInPerSec_Count", "namespace", "kafka", "pod", "my-kafka-kafka-0" ],
+          [ "...", "my-kafka-kafka-1" ],
+          [ "...", "my-kafka-kafka-2" ]
+        ],
+        "region": "us-east-1",
+        "title": "📥 Messages In / sec",
+        "stat": "Sum",
+        "period": 60
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 2,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "KafkaOnEKS", "kafka_server_ReplicaManager_UnderReplicatedPartitions_Value", "namespace", "kafka", "pod", "my-kafka-kafka-0" ],
+          [ "...", "my-kafka-kafka-1" ],
+          [ "...", "my-kafka-kafka-2" ]
+        ],
+        "region": "us-east-1",
+        "title": "⚠️ Under-Replicated Partitions",
+        "stat": "Maximum",
+        "period": 60,
+        "yAxis": { "left": { "min": 0 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 8,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "KafkaOnEKS", "kafka_log_Log_Size_Value", "namespace", "kafka", "pod", "my-kafka-kafka-0" ],
+          [ "...", "my-kafka-kafka-1" ],
+          [ "...", "my-kafka-kafka-2" ]
+        ],
+        "region": "us-east-1",
+        "title": "💾 Log Segment Size (Bytes)",
+        "stat": "Average",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 8,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          [ "KafkaOnEKS", "jvm_memory_bytes_used", "area", "heap", "namespace", "kafka", "pod", "my-kafka-kafka-0" ],
+          [ "...", "my-kafka-kafka-1" ],
+          [ "...", "my-kafka-kafka-2" ]
+        ],
+        "region": "us-east-1",
+        "title": "🧠 JVM Heap Usage",
+        "stat": "Average",
+        "period": 60
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 14,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "query": "SOURCE '/aws/eks/kafka-eks/kafka' | fields @timestamp, log | sort @timestamp desc | limit 100",
+        "region": "us-east-1",
+        "title": "📜 Kafka Logs (Last 100 lines)"
+      }
+    }
+  ]
+}

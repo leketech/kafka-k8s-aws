@@ -1,0 +1,83 @@
+name: Deploy Kafka on EKS
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  TF_VERSION: "1.9.0"
+  AWS_REGION: "us-east-1"
+  # Removed hardcoded bucket/table — now from secrets
+
+jobs:
+  deploy:
+    name: Deploy Kafka Cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsKafkaDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=kafka-eks/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_LOCK_TABLE }}"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.28.0"  # Match your EKS version (1.30 → use 1.28+)
+
+      - name: Configure kubectl (retry if cluster not ready)
+        run: |
+          for i in {1..10}; do
+            if aws eks update-kubeconfig --name kafka-eks --region ${{ env.AWS_REGION }}; then
+              echo "✅ kubectl configured"
+              break
+            fi
+            echo "⏳ Cluster not ready, retrying in 30s... (attempt $i/10)"
+            sleep 30
+          done
+
+      - name: Get Kafka Bootstrap Address
+        run: |
+          BOOTSTRAP=$(kubectl get svc my-kafka-kafka-external-bootstrap -n kafka -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          if [ "$BOOTSTRAP" = "pending" ] || [ -z "$BOOTSTRAP" ]; then
+            echo "⚠️ Kafka bootstrap address not ready yet. Check NLB in AWS Console."
+            exit 1
+          fi
+          echo "KAFKA_BOOTSTRAP=$BOOTSTRAP" >> $GITHUB_ENV
+
+      - name: Output Kafka Address
+        run: |
+          echo "✅ Kafka is ready!"
+          echo "Bootstrap Server: ${{ env.KAFKA_BOOTSTRAP }}:9094"
+        if: always()
