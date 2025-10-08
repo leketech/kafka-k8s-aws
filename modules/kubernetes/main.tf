@@ -1,0 +1,149 @@
+# ----------------------------
+# Create Kafka Namespace
+# ----------------------------
+resource "kubernetes_namespace" "kafka" {
+  metadata {
+    name = "kafka"
+  }
+}
+
+# ----------------------------
+# Deploy Kafka Cluster (Strimzi Operator Approach)
+# ----------------------------
+resource "kubernetes_manifest" "kafka_cluster" {
+  count = var.kafka_deployment_type == "strimzi" ? 1 : 0
+
+  manifest = yamldecode(templatefile("${path.module}/../../kafka/kafka-cluster.yaml.tftpl", {
+    namespace = kubernetes_namespace.kafka.metadata[0].name
+  }))
+}
+
+# ----------------------------
+# Deploy Zookeeper with StatefulSet (StatefulSet Approach)
+# ----------------------------
+resource "kubernetes_manifest" "zookeeper_statefulset" {
+  count = var.kafka_deployment_type == "statefulset" ? 1 : 0
+
+  manifest = yamldecode(templatefile("${path.module}/../../kafka/zookeeper-statefulset.yaml.tftpl", {
+    namespace       = kubernetes_namespace.kafka.metadata[0].name
+    zookeeper_image = "confluentinc/cp-zookeeper:7.5.0"
+    storage_class   = "gp3"
+    storage_size    = "20Gi"
+  }))
+
+  depends_on = [kubernetes_namespace.kafka]
+}
+
+# ----------------------------
+# Deploy Zookeeper Headless Service (StatefulSet Approach)
+# ----------------------------
+resource "kubernetes_manifest" "zookeeper_headless_service" {
+  count = var.kafka_deployment_type == "statefulset" ? 1 : 0
+
+  manifest = yamldecode(templatefile("${path.module}/../../kafka/zookeeper-headless-service.yaml.tftpl", {
+    namespace = kubernetes_namespace.kafka.metadata[0].name
+  }))
+
+  depends_on = [kubernetes_namespace.kafka]
+}
+
+# ----------------------------
+# Deploy Zookeeper Client Service (StatefulSet Approach)
+# ----------------------------
+resource "kubernetes_manifest" "zookeeper_service" {
+  count = var.kafka_deployment_type == "statefulset" ? 1 : 0
+
+  manifest = yamldecode(templatefile("${path.module}/../../kafka/zookeeper-service.yaml.tftpl", {
+    namespace = kubernetes_namespace.kafka.metadata[0].name
+  }))
+
+  depends_on = [kubernetes_namespace.kafka]
+}
+
+# ----------------------------
+# Deploy Kafka with StatefulSet (StatefulSet Approach)
+# ----------------------------
+resource "kubernetes_manifest" "kafka_statefulset" {
+  count = var.kafka_deployment_type == "statefulset" ? 1 : 0
+
+  manifest = yamldecode(templatefile("${path.module}/../../kafka/kafka-statefulset.yaml.tftpl", {
+    namespace         = kubernetes_namespace.kafka.metadata[0].name
+    replicas          = 3
+    kafka_image       = "confluentinc/cp-kafka:7.5.0"
+    zookeeper_connect = "zookeeper:2181"
+    storage_class     = "gp3"
+    storage_size      = "50Gi"
+  }))
+
+  depends_on = [kubernetes_namespace.kafka, kubernetes_manifest.zookeeper_statefulset]
+}
+
+# ----------------------------
+# Fluent Bit for CloudWatch Logs
+# ----------------------------
+resource "kubernetes_config_map" "fluent_bit" {
+  metadata {
+    name      = "fluent-bit-config"
+    namespace = "kube-system"
+  }
+
+  data = {
+    "fluent-bit.conf" = file("${path.module}/../../cloudwatch/fluent-bit-configmap.yaml.tftpl")
+  }
+}
+
+resource "kubernetes_config_map" "fluent_bit_templated" {
+  metadata {
+    name      = "fluent-bit-config"
+    namespace = "kube-system"
+  }
+
+  data = {
+    "fluent-bit.conf" = templatefile("${path.module}/../../cloudwatch/fluent-bit-configmap.yaml.tftpl", {
+      aws_region   = var.aws_region
+      cluster_name = var.cluster_name
+    })
+  }
+}
+
+# Fluent Bit DaemonSet
+resource "kubernetes_manifest" "fluent_bit_daemonset" {
+  manifest = yamldecode(templatefile("${path.module}/../../cloudwatch/fluent-bit-daemonset.yaml.tftpl", {
+    aws_region = var.aws_region
+  }))
+}
+
+# ServiceAccount + RBAC for Fluent Bit
+resource "kubernetes_service_account" "fluent_bit" {
+  metadata {
+    name      = "fluent-bit"
+    namespace = "kube-system"
+  }
+}
+
+resource "kubernetes_cluster_role" "fluent_bit" {
+  metadata {
+    name = "fluent-bit-read"
+  }
+  rule {
+    api_groups = [""]
+    resources  = ["namespaces", "pods"]
+    verbs      = ["get", "list", "watch"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding" "fluent_bit" {
+  metadata {
+    name = "fluent-bit-read"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role.fluent_bit.metadata[0].name
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.fluent_bit.metadata[0].name
+    namespace = "kube-system"
+  }
+}
