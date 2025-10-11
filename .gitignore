@@ -1,0 +1,47 @@
+# Terraform state and backup files
+*.tfstate
+*.tfstate.*
+*.backup
+terraform.tfstate*
+.tfplan
+*.bak
+
+# Terraform local directories
+.terraform/
+.terraform.lock.hcl
+
+# AWS credentials, installers, and temporary files
+awscliv2.zip
+aws/
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.csr
+*.der
+
+# Kubernetes and Helm temp files
+.kube/
+*.secret.yaml
+*.yaml~
+Chart.yaml
+values.yaml
+
+# Environment and variable files
+.env
+*.env
+*.tfvars
+*.tfvars.json
+
+# Local debug / output files
+mnt/
+nodegroup-details.json
+tfplan
+kubectl
+
+# System / editor files
+.DS_Store
+Thumbs.db
+*.log
+
